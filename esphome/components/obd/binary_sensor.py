@@ -1,23 +1,15 @@
-import esphome.config_validation as cv
 import esphome.codegen as cg
 from esphome.components import binary_sensor
+import esphome.config_validation as cv
+from esphome.const import CONF_INDEX, CONF_LAMBDA
 from esphome.cpp_generator import LambdaExpression
-from esphome.const import (
-    CONF_LAMBDA,
-    CONF_INDEX,
-)
-from . import (
-    CONF_PID_ID,
-    CONF_MASK,
-    OBDBinarySensor,
-    PIDRequest
-)
+
+from . import CONF_MASK, CONF_PID_ID, OBDBinarySensor, PIDRequest
 
 CONFIG_SCHEMA = cv.All(
     binary_sensor.binary_sensor_schema(
         OBDBinarySensor,
-    )
-    .extend(
+    ).extend(
         {
             cv.Required(CONF_PID_ID): cv.use_id(PIDRequest),
             cv.Optional(CONF_LAMBDA): cv.returning_lambda,
@@ -26,8 +18,9 @@ CONFIG_SCHEMA = cv.All(
         }
     ),
     cv.has_exactly_one_key(CONF_LAMBDA, CONF_INDEX),
-    cv.has_none_or_all_keys(CONF_INDEX, CONF_MASK)
+    cv.has_none_or_all_keys(CONF_INDEX, CONF_MASK),
 )
+
 
 async def to_code(config):
     pid_request = await cg.get_variable(config[CONF_PID_ID])
@@ -35,15 +28,17 @@ async def to_code(config):
     await cg.register_component(var, config)
 
     if lambda_ := config.get(CONF_LAMBDA):
-        template = await cg.process_lambda(lambda_, [(cg.std_vector.template(cg.uint8), "data")], return_type=cg.bool_)
+        template = await cg.process_lambda(
+            lambda_, [(cg.std_vector.template(cg.uint8), "data")], return_type=cg.bool_
+        )
         cg.add(var.set_template(template))
-    
+
     else:
         index = config[CONF_INDEX]
         mask = config[CONF_MASK]
         template = LambdaExpression(
-                f"return (data[{index}] & {mask}) == {mask};",
-                [(cg.std_vector.template(cg.uint8), "data")], 
-                return_type=cg.bool_
-            )
+            f"return (data[{index}] & {mask}) == {mask};",
+            [(cg.std_vector.template(cg.uint8), "data")],
+            return_type=cg.bool_,
+        )
         cg.add(var.set_template(template))
