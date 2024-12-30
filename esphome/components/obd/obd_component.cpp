@@ -125,7 +125,7 @@ void PIDRequest::handle_incoming(std::vector<uint8_t> &data) {
   if (this->state_ != POLLING)
     return;  // Not our cup of tea here, some other pid might be polling on the same can_id
 
-  ESP_LOGD(TAG, "recieved content for pid 0x%04x: %s", this->can_id_, this->pid_, format_hex_pretty(data).c_str());
+  ESP_LOGD(TAG, "recieved content for pid 0x%04x: %s", this->pid_, format_hex_pretty(data).c_str());
 
   // Handle the data
   if ((data[0] & 0xF0) == 0x10) {
