@@ -121,7 +121,7 @@ bool PIDRequest::update() {
   return true;
 }
 
-void PIDRequest::handle_incoming(std::vector<uint8_t> &data) {
+void PIDRequest::handle_incoming(const std::vector<uint8_t> &data) {
   if (this->state_ != POLLING)
     return;  // Not our cup of tea here, some other pid might be polling on the same can_id
 

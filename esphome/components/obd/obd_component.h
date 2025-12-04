@@ -1,4 +1,5 @@
 #include "esphome/core/component.h"
+#include "esphome/core/version.h"
 #include "esphome/components/canbus/canbus.h"
 #include "esphome/components/sensor/sensor.h"
 #include "esphome/components/binary_sensor/binary_sensor.h"
@@ -76,7 +77,7 @@ class PIDRequest : public Component {
   void dump_config() override;
 
  protected:
-  void handle_incoming(std::vector<uint8_t> &data);
+  void handle_incoming(const std::vector<uint8_t> &data);
 
   OBDComponent *parent_;
   uint32_t can_id_;
@@ -149,7 +150,14 @@ class OBDCanbusTrigger : public canbus::CanbusTrigger, public Action<std::vector
     automation->add_action(this);
   };
 
-  void play(std::vector<uint8_t> data, uint32_t can_id, bool rx) override { this->parent_->handle_incoming(data); }
+#if ESPHOME_VERSION_CODE >= VERSION_CODE(2025, 11, 0)
+  void play(const std::vector<uint8_t> &data, const uint32_t &can_id, const bool &rx) override
+#else
+  void play(std::vector<uint8_t> data, uint32_t can_id, bool rx) override
+#endif
+  {
+    this->parent_->handle_incoming(data);
+  }
 
  protected:
   PIDRequest *parent_;
