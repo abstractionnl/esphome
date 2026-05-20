@@ -71,7 +71,14 @@ bool PIDRequest::start() {
   if (this->state_ != WAITING)
     return false;
 
-  if ((this->last_polled_ + this->interval_) >= millis())
+  uint32_t active_interval = this->interval_;
+  if (this->parent_->get_polling_speed() == POLLING_SLOW) {
+    if (this->slow_interval_ == 0)
+      return false;  // Disabled in slow polling mode
+    active_interval = this->slow_interval_;
+  }
+
+  if ((this->last_polled_ + active_interval) >= millis())
     return false;
 
   this->response_buffer_.clear();
@@ -151,6 +158,7 @@ void PIDRequest::dump_config() {
 
   ESP_LOGCONFIG(TAG, "  Pid: 0x%03" PRIx32, this->pid_);
   ESP_LOGCONFIG(TAG, "  Interval: %ims", this->interval_);
+  ESP_LOGCONFIG(TAG, "  Slow interval: %ims", this->slow_interval_);
   ESP_LOGCONFIG(TAG, "  Timeout: %ims", this->timeout_);
 }
 

@@ -14,6 +14,11 @@ class OBDPidTrigger;
 class OBDSensorBase;
 class OBDSensor;
 
+enum polling_speed_t {
+  POLLING_FAST,
+  POLLING_SLOW,
+};
+
 class OBDComponent : public PollingComponent {
   friend class OBDCanbusTrigger;
 
@@ -24,6 +29,8 @@ class OBDComponent : public PollingComponent {
 
   void set_canbus(canbus::Canbus *canbus) { this->canbus_ = canbus; }
   void set_enabled_by_default(bool enabled_by_default) { this->enabled_by_default_ = enabled_by_default; }
+  void set_polling_speed(polling_speed_t speed) { this->polling_speed_ = speed; }
+  polling_speed_t get_polling_speed() const { return this->polling_speed_; }
 
   void add_pidrequest(PIDRequest *request);
   void dump_config() override;
@@ -34,6 +41,7 @@ class OBDComponent : public PollingComponent {
  protected:
   canbus::Canbus *canbus_{nullptr};
   bool enabled_by_default_{false};
+  polling_speed_t polling_speed_{POLLING_FAST};
 
   std::vector<PIDRequest *> pidrequests_{};
 
@@ -70,6 +78,7 @@ class PIDRequest : public Component {
 
   void set_timeout(std::uint32_t timeout) { this->timeout_ = timeout; }
   void set_interval(std::uint32_t interval) { this->interval_ = interval; }
+  void set_slow_interval(std::uint32_t slow_interval) { this->slow_interval_ = slow_interval; }
   void set_reply_length(std::uint32_t reply_length) { this->reply_length_ = reply_length; }
 
   void add_sensor(OBDSensorBase *sensor) { this->sensors_.push_back(sensor); }
@@ -85,6 +94,7 @@ class PIDRequest : public Component {
   uint32_t pid_;
   bool use_extended_id_;
   uint32_t interval_{5000};
+  uint32_t slow_interval_{0};
   uint32_t timeout_{500};
   uint32_t reply_length_{8};
 
@@ -161,6 +171,18 @@ class OBDCanbusTrigger : public canbus::CanbusTrigger, public Action<std::vector
 
  protected:
   PIDRequest *parent_;
+};
+
+template<typename... Ts> class SetPollingSpeedAction : public Action<Ts...> {
+ public:
+  explicit SetPollingSpeedAction(OBDComponent *parent) : parent_(parent) {}
+
+  TEMPLATABLE_VALUE(polling_speed_t, polling_speed)
+
+  void play(Ts... x) override { this->parent_->set_polling_speed(this->polling_speed_.value(x...)); }
+
+ protected:
+  OBDComponent *parent_;
 };
 
 }  // namespace obd

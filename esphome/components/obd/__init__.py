@@ -18,6 +18,13 @@ OBDPidTrigger = obd_ns.class_(
     automation.Trigger.template(cg.std_vector.template(cg.uint8)),
     cg.Component,
 )
+SetPollingSpeedAction = obd_ns.class_("SetPollingSpeedAction", automation.Action)
+
+polling_speed_t = obd_ns.enum("polling_speed_t")
+POLLING_SPEEDS = {
+    "fast": polling_speed_t.POLLING_FAST,
+    "slow": polling_speed_t.POLLING_SLOW,
+}
 
 CONF_CANBUS_ID = "canbus_id"
 CONF_ENABLED_BY_DEFAULT = "enabled_by_default"
@@ -32,12 +39,15 @@ CONF_REPLY_LENGTH = "reply_length"
 CONF_ON_FRAME = "on_frame"
 CONF_MASK = "mask"
 CONF_SIGNED = "signed"
+CONF_SLOW_INTERVAL = "slow_interval"
+CONF_POLLING_SPEED = "polling_speed"
 
 CONFIG_SCHEMA = cv.Schema(
     {
         cv.GenerateID(): cv.declare_id(OBDComponent),
         cv.Required(CONF_CANBUS_ID): cv.use_id("CanbusComponent"),
         cv.Optional(CONF_ENABLED_BY_DEFAULT, default=False): cv.boolean,
+        cv.Optional(CONF_POLLING_SPEED, default="fast"): cv.enum(POLLING_SPEEDS, lower=True),
         cv.Optional(CONF_PIDS): cv.ensure_list(
             {
                 cv.GenerateID(CONF_ID): cv.declare_id(PIDRequest),
@@ -47,6 +57,9 @@ CONFIG_SCHEMA = cv.Schema(
                 cv.Optional(CONF_USE_EXTENDED_ID, default=False): cv.boolean,
                 cv.Optional(
                     CONF_INTERVAL, default="5s"
+                ): cv.positive_time_period_milliseconds,
+                cv.Optional(
+                    CONF_SLOW_INTERVAL, default="0s"
                 ): cv.positive_time_period_milliseconds,
                 cv.Optional(
                     CONF_TIMEOUT, default="500ms"
@@ -71,6 +84,7 @@ async def to_code(config):
 
     cg.add(var.set_canbus(can_bus))
     cg.add(var.set_enabled_by_default(config[CONF_ENABLED_BY_DEFAULT]))
+    cg.add(var.set_polling_speed(config[CONF_POLLING_SPEED]))
 
     for pid_conf in config.get(CONF_PIDS, []):
         can_id = pid_conf[CONF_CAN_ID]
@@ -87,6 +101,7 @@ async def to_code(config):
         await cg.register_component(pid_request, pid_conf)
 
         cg.add(pid_request.set_interval(pid_conf[CONF_INTERVAL]))
+        cg.add(pid_request.set_slow_interval(pid_conf[CONF_SLOW_INTERVAL]))
         cg.add(pid_request.set_timeout(pid_conf[CONF_TIMEOUT]))
         cg.add(pid_request.set_reply_length(pid_conf[CONF_REPLY_LENGTH]))
 
@@ -97,4 +112,25 @@ async def to_code(config):
                 trigger, [(cg.std_vector.template(cg.uint8), "data")], trigger_conf
             )
 
+    return var
+
+
+SET_POLLING_SPEED_ACTION_SCHEMA = cv.maybe_simple_value(
+    cv.Schema(
+        {
+            cv.GenerateID(): cv.use_id(OBDComponent),
+            cv.Required(CONF_POLLING_SPEED): cv.enum(POLLING_SPEEDS, lower=True),
+        }
+    ),
+    key=CONF_POLLING_SPEED,
+)
+
+
+@automation.register_action(
+    "obd.set_polling_speed", SetPollingSpeedAction, SET_POLLING_SPEED_ACTION_SCHEMA, synchronous=True
+)
+async def set_polling_speed_action_to_code(config, action_id, template_arg, args):
+    var = cg.new_Pvariable(action_id, template_arg, await cg.get_variable(config[CONF_ID]))
+    templ = await cg.templatable(config[CONF_POLLING_SPEED], args, polling_speed_t)
+    cg.add(var.set_polling_speed(templ))
     return var
