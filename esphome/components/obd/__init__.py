@@ -41,6 +41,7 @@ CONF_MASK = "mask"
 CONF_SIGNED = "signed"
 CONF_SLOW_INTERVAL = "slow_interval"
 CONF_POLLING_SPEED = "polling_speed"
+CONF_WAKE = "wake"
 
 CONFIG_SCHEMA = cv.Schema(
     {
@@ -65,6 +66,7 @@ CONFIG_SCHEMA = cv.Schema(
                     CONF_TIMEOUT, default="500ms"
                 ): cv.positive_time_period_milliseconds,
                 cv.Optional(CONF_REPLY_LENGTH, default=8): cv.positive_int,
+                cv.Optional(CONF_WAKE, default=False): cv.boolean,
                 cv.Optional(CONF_ON_FRAME): automation.validate_automation(
                     {
                         cv.GenerateID(CONF_TRIGGER_ID): cv.declare_id(OBDPidTrigger),
@@ -104,6 +106,7 @@ async def to_code(config):
         cg.add(pid_request.set_slow_interval(pid_conf[CONF_SLOW_INTERVAL]))
         cg.add(pid_request.set_timeout(pid_conf[CONF_TIMEOUT]))
         cg.add(pid_request.set_reply_length(pid_conf[CONF_REPLY_LENGTH]))
+        cg.add(pid_request.set_wake(pid_conf[CONF_WAKE]))
 
         for trigger_conf in pid_conf.get(CONF_ON_FRAME, []):
             trigger = cg.new_Pvariable(trigger_conf[CONF_TRIGGER_ID], pid_request)

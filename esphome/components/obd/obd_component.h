@@ -23,7 +23,7 @@ class OBDComponent : public PollingComponent {
   friend class OBDCanbusTrigger;
 
  public:
-  explicit OBDComponent() : PollingComponent(500) {}
+  explicit OBDComponent() : PollingComponent(100) {}
   void call_setup() override;
   void update() override;
 
@@ -53,6 +53,7 @@ using data_to_bool_t = std::function<float(std::vector<uint8_t>)>;
 
 enum request_state_t {
   WAITING,
+  WAKING,
   POLLING,
 };
 
@@ -80,6 +81,7 @@ class PIDRequest : public Component {
   void set_interval(std::uint32_t interval) { this->interval_ = interval; }
   void set_slow_interval(std::uint32_t slow_interval) { this->slow_interval_ = slow_interval; }
   void set_reply_length(std::uint32_t reply_length) { this->reply_length_ = reply_length; }
+  void set_wake(bool wake) { this->wake_ = wake; }
 
   void add_sensor(OBDSensorBase *sensor) { this->sensors_.push_back(sensor); }
   void add_trigger(OBDPidTrigger *trigger) { this->triggers_.push_back(trigger); }
@@ -87,6 +89,8 @@ class PIDRequest : public Component {
 
  protected:
   void handle_incoming(const std::vector<uint8_t> &data);
+  void send_wake();
+  void send_pid_request();
 
   OBDComponent *parent_;
   uint32_t can_id_;
@@ -97,6 +101,8 @@ class PIDRequest : public Component {
   uint32_t slow_interval_{0};
   uint32_t timeout_{500};
   uint32_t reply_length_{8};
+  bool wake_{false};
+  uint8_t wake_retries_{0};
 
   request_state_t state_{WAITING};
   std::vector<uint8_t> response_buffer_{};

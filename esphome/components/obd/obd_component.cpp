@@ -67,6 +67,34 @@ void PIDRequest::setup() {
   trigger->setup();
 }
 
+void PIDRequest::send_wake() {
+  ESP_LOGD(TAG, "waking can_id: 0x%03x before pid 0x%04x", this->can_id_, this->pid_);
+  this->parent_->send(this->can_id_, this->use_extended_id_, 0x02, 0x10, 0x01);
+  this->response_buffer_.clear();
+  this->response_buffer_.reserve(8);
+  this->last_polled_ = millis();
+  this->state_ = WAKING;
+}
+
+void PIDRequest::send_pid_request() {
+  auto can_id = this->can_id_;
+  auto pid = this->pid_;
+
+  ESP_LOGD(TAG, "polling can_id: 0x%03x for pid 0x%04x", can_id, pid);
+
+  if (pid > 0xFFFF) {
+    // 24 bit pid
+    this->parent_->send(can_id, this->use_extended_id_, 0x03, (pid >> 16) & 0xFF, (pid >> 8) & 0xFF, pid & 0xFF);
+  } else {
+    this->parent_->send(can_id, this->use_extended_id_, 0x02, (pid >> 8) & 0xFF, pid & 0xFF);
+  }
+
+  this->response_buffer_.clear();
+  this->response_buffer_.reserve(this->reply_length_);
+  this->last_polled_ = millis();
+  this->state_ = POLLING;
+}
+
 bool PIDRequest::start() {
   if (this->state_ != WAITING)
     return false;
@@ -81,55 +109,66 @@ bool PIDRequest::start() {
   if ((this->last_polled_ + active_interval) >= millis())
     return false;
 
-  this->response_buffer_.clear();
-  this->response_buffer_.reserve(this->reply_length_);
-
-  auto can_id = this->can_id_;
-  auto pid = this->pid_;
-
-  ESP_LOGD(TAG, "polling can_id: 0x%03x for pid 0x%04x", can_id, pid);
-
-  if (pid > 0xFFFF) {
-    // 24 bit pid
-    this->parent_->send(can_id, this->use_extended_id_, 0x03, (pid >> 16) & 0xFF, (pid >> 8) & 0xFF, pid & 0xFF);
-  } else {
-    this->parent_->send(can_id, this->use_extended_id_, 0x02, (pid >> 8) & 0xFF, pid & 0xFF);
+  if (this->wake_) {
+    this->wake_retries_ = 0;
+    this->send_wake();
+    return true;
   }
 
-  this->last_polled_ = millis();
-  this->state_ = POLLING;
-
+  this->send_pid_request();
   return true;
 }
 
 bool PIDRequest::update() {
+  if (this->state_ == WAKING) {
+    // Check if ECU responded with positive response (50 01)
+    if (this->response_buffer_.size() >= 2 && this->response_buffer_[0] == 0x02 && this->response_buffer_[1] == 0x50 && this->response_buffer_[2] == 0x01) {
+      // ECU is awake, send the actual request
+      this->send_pid_request();
+      return false;
+    }
+
+    // Check for timeout
+    if ((this->last_polled_ + this->timeout_) <= millis()) {
+      this->wake_retries_++;
+      if (this->wake_retries_ >= 3) {
+        ESP_LOGD(TAG, "wakeup failed after 3 attempts for can_id: 0x%03x pid 0x%04x", this->can_id_, this->pid_);
+        this->state_ = WAITING;
+        return true;
+      }
+      // Retry wake
+      this->send_wake();
+    }
+    return false;
+  }
+
   if (this->state_ != POLLING)
     return true;  // Invalid state, update should not have been called here
+
+  if (this->response_buffer_.size() >= this->reply_length_) {
+    for (auto *trigger : this->triggers_) {
+      trigger->trigger(this->response_buffer_);
+    }
+
+    for (auto *sensor : this->sensors_) {
+      sensor->update(this->response_buffer_);
+    }
+
+    this->state_ = WAITING;
+    return true;
+  }
 
   if ((this->last_polled_ + this->timeout_) > millis()) {
     return false;
   }
 
-  if (this->response_buffer_.size() < this->reply_length_) {
-    ESP_LOGD(TAG, "timeout for polling can_id: 0x%03x for pid 0x%04x", this->can_id_, this->pid_);
-    this->state_ = WAITING;
-    return true;
-  }
-
-  for (auto *trigger : this->triggers_) {
-    trigger->trigger(this->response_buffer_);
-  }
-
-  for (auto *sensor : this->sensors_) {
-    sensor->update(this->response_buffer_);
-  }
-
+  ESP_LOGD(TAG, "timeout for polling can_id: 0x%03x for pid 0x%04x", this->can_id_, this->pid_);
   this->state_ = WAITING;
   return true;
 }
 
 void PIDRequest::handle_incoming(const std::vector<uint8_t> &data) {
-  if (this->state_ != POLLING)
+  if (this->state_ != POLLING && this->state_ != WAKING)
     return;  // Not our cup of tea here, some other pid might be polling on the same can_id
 
   ESP_LOGD(TAG, "recieved content for pid 0x%04x: %s", this->pid_, format_hex_pretty(data).c_str());
