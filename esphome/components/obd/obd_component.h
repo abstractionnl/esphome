@@ -65,8 +65,8 @@ class PIDRequest : public Component {
                       const std::uint32_t can_response_id, const bool use_extended_id)
       : parent_(parent),
         can_id_(can_id),
-        pid_(pid),
         can_response_id_(can_response_id),
+        pid_(pid),
         use_extended_id_(use_extended_id) {
     this->state_ = WAITING;
   };
@@ -157,14 +157,17 @@ class OBDBinarySensor : public OBDSensorBase, public binary_sensor::BinarySensor
   data_to_bool_t data_to_value_func_;
 };
 
-class OBDCanbusTrigger : public canbus::CanbusTrigger, public Action<std::vector<uint8_t>, uint32_t, bool> {
+class OBDCanbusTrigger : public Action<std::vector<uint8_t>, uint32_t, bool> {
  public:
   explicit OBDCanbusTrigger(PIDRequest *parent)
-      : CanbusTrigger(parent->parent_->canbus_, parent->can_response_id_, 0x1FFFFFFF, parent->use_extended_id_),
-        parent_(parent) {
-    auto automation = new Automation<std::vector<uint8_t>, uint32_t, bool>(this);
+      : parent_(parent) {
+    this->trigger_ =
+        new canbus::CanbusTrigger(parent->parent_->canbus_, parent->can_response_id_, 0x1FFFFFFF, parent->use_extended_id_);
+    auto automation = new Automation<std::vector<uint8_t>, uint32_t, bool>(this->trigger_);
     automation->add_action(this);
   };
+
+  void setup() { this->trigger_->setup(); }
 
 #if ESPHOME_VERSION_CODE >= VERSION_CODE(2025, 11, 0)
   void play(const std::vector<uint8_t> &data, const uint32_t &can_id, const bool &rx) override
@@ -177,6 +180,7 @@ class OBDCanbusTrigger : public canbus::CanbusTrigger, public Action<std::vector
 
  protected:
   PIDRequest *parent_;
+  canbus::CanbusTrigger *trigger_;
 };
 
 template<typename... Ts> class SetPollingSpeedAction : public Action<Ts...> {
