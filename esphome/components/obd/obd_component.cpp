@@ -56,7 +56,7 @@ void OBDComponent::send(std::uint32_t can_id, bool use_extended_id, uint8_t a, u
 }
 
 void OBDComponent::add_pidrequest(PIDRequest *request) {
-  ESP_LOGVV(TAG, "add request for canid=0x%03, pid=0x%06" PRIx32, request->can_id_, PRIx32, request->pid_);
+  ESP_LOGVV(TAG, "add request for canid=0x%03" PRIx32 ", pid=0x%06" PRIx32, request->can_id_, request->pid_);
   this->pidrequests_.push_back(request);
 };
 
@@ -68,7 +68,7 @@ void PIDRequest::setup() {
 }
 
 void PIDRequest::send_wake() {
-  ESP_LOGD(TAG, "waking can_id: 0x%03x before pid 0x%04x", this->can_id_, this->pid_);
+  ESP_LOGD(TAG, "waking can_id: 0x%03" PRIx32 " before pid 0x%04" PRIx32, this->can_id_, this->pid_);
   this->parent_->send(this->can_id_, this->use_extended_id_, 0x02, 0x10, 0x01);
   this->response_buffer_.clear();
   this->response_buffer_.reserve(8);
@@ -80,7 +80,7 @@ void PIDRequest::send_pid_request() {
   auto can_id = this->can_id_;
   auto pid = this->pid_;
 
-  ESP_LOGD(TAG, "polling can_id: 0x%03x for pid 0x%04x", can_id, pid);
+  ESP_LOGD(TAG, "polling can_id: 0x%03" PRIx32 " for pid 0x%04" PRIx32, can_id, pid);
 
   if (pid > 0xFFFF) {
     // 24 bit pid
@@ -132,7 +132,7 @@ bool PIDRequest::update() {
     if ((this->last_polled_ + this->timeout_) <= millis()) {
       this->wake_retries_++;
       if (this->wake_retries_ >= 3) {
-        ESP_LOGD(TAG, "wakeup failed after 3 attempts for can_id: 0x%03x pid 0x%04x", this->can_id_, this->pid_);
+        ESP_LOGD(TAG, "wakeup failed after 3 attempts for can_id: 0x%03" PRIx32 " pid 0x%04" PRIx32, this->can_id_, this->pid_);
         this->state_ = WAITING;
         return true;
       }
@@ -162,7 +162,7 @@ bool PIDRequest::update() {
     return false;
   }
 
-  ESP_LOGD(TAG, "timeout for polling can_id: 0x%03x for pid 0x%04x", this->can_id_, this->pid_);
+  ESP_LOGD(TAG, "timeout for polling can_id: 0x%03" PRIx32 " for pid 0x%04" PRIx32, this->can_id_, this->pid_);
   this->state_ = WAITING;
   return true;
 }
@@ -171,7 +171,7 @@ void PIDRequest::handle_incoming(const std::vector<uint8_t> &data) {
   if (this->state_ != POLLING && this->state_ != WAKING)
     return;  // Not our cup of tea here, some other pid might be polling on the same can_id
 
-  ESP_LOGD(TAG, "recieved content for pid 0x%04x: %s", this->pid_, format_hex_pretty(data).c_str());
+  ESP_LOGD(TAG, "recieved content for pid 0x%04" PRIx32 ": %s", this->pid_, format_hex_pretty(data).c_str());
 
   // Handle the data
   if ((data[0] & 0xF0) == 0x10) {
@@ -185,7 +185,7 @@ void PIDRequest::handle_incoming(const std::vector<uint8_t> &data) {
 }
 
 void PIDRequest::dump_config() {
-  ESP_LOGCONFIG(TAG, "PID Request 0x%03", this->pid_);
+  ESP_LOGCONFIG(TAG, "PID Request 0x%03" PRIx32, this->pid_);
 
   if (this->use_extended_id_) {
     ESP_LOGCONFIG(TAG, "  Can extended id: 0x%08" PRIx32, this->can_id_);
